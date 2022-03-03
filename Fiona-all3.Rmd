@@ -1,0 +1,288 @@
+---
+title: "lme Fiona"
+author: "Fiona"
+date: "9/20/2019"
+output: html_document
+---
+
+###Libraries
+
+```{r setup, include = TRUE, cache = FALSE, echo=TRUE, message=FALSE}
+
+require("knitr")
+
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+library(dplyr)
+library(tidyr)
+library(Rmisc)
+library(lubridate)
+library(car)
+library(MASS)
+library(mgcv)
+library(MuMIn)
+library(lattice)
+library(ggplot2)      
+library(grid)
+library(gridExtra)   
+library(scales)       
+library(tidyverse)
+library(ggfortify)   
+library(broom)        
+library(effects)      
+library(emmeans)      
+library(cowplot)
+library(jtools)
+library(survival)
+library(ggpubr) 
+library(sjstats)
+library(sjPlot)
+library(DHARMa)
+library(ggeffects)
+library(interactions)
+library(partykit)
+library(lme4)
+
+
+```
+###Upload data
+
+
+##all available data
+```{r}
+datWW1<- read_csv("/Users/fionahoegh-guldberg/Desktop/GlossyR/Banding.csv",trim_ws=TRUE)
+head(datWW1)
+str(datWW1)
+summary(datWW1)
+```
+###Taking care of missing values (none present, but useful code to have)
+```{r}
+datWW1[datWW1==""] <- NA
+str(datWW1)
+
+```
+
+```{r}
+datWW1$FLEDGED <- as.factor(datWW1$FLEDGED)
+datWW1$SEX <- as.factor(datWW1$SEX)
+str(datWW1)
+
+```
+
+###Model  wing length to weight ratio  How is wing ratio related to estimated nestling age?
+```{r}
+model.lm <- lm(Wwratio ~ SEX *BANDING_AGE, data=datWW1)
+auto<-stepAIC(model.lm)
+summary(auto)
+Anova(auto)
+
+```
+###Basic Plot
+```{r}
+plot(allEffects(auto))
+```
+Nicer plot
+```{r}
+set_theme(
+  base=theme_classic(),
+  axis.title.size=1.7,
+  axis.textsize = 1.2#,
+  #legend.size =.7,
+  #legend.title.size = 3,
+  #geom.label.size = 5
+)
+fig3<-plot_model(auto, type = "eff", show.data = TRUE, ci.lvl = 0.44, terms = c("BANDING_AGE"), title=" ", vcov.fun = "vcovCL") + 
+  labs(y="Wing to Weight Ratio (mm/g)",x="Estimated Age (weeks)") +scale_y_continuous(
+  labels = scales::number_format(accuracy = 0.1))
+fig3
+
+ggsave(filename ="WwratioByAge.png", plot=fig3) #saves image to working directory
+# as number of observation weeks increase so does the likelihood of fledgelling success
+```
+###Upload data
+```{r}
+dat<- read_csv("/Users/fionahoegh-guldberg/Desktop/GlossyR/proportion_abr2020_1n.csv",trim_ws=TRUE)
+head(dat)
+str(dat)
+summary(dat)
+```
+###Changing to factor
+```{r}
+dat$Fledged<- as.factor(dat$Fledged)
+str(dat)
+
+```
+###model checking for co-linearity
+```{r}
+Fledge.glm <- glm(Fledged~Chaos+Sub+Sideb+Bifurc+Biphon+Jumps+weeksold, data=Fledge.basic, family='binomial') #Laplacian approximation
+
+vif(Fledge.glm)
+```
+
+### remove Nest ID  for cTREE doesn't allow random variable
+```{r}
+dat$NestID <- NULL # Delete this variable from the data.frame
+head(dat)
+```
+
+###Building the regression tree
+
+```{r}
+dat$Sideb3 <- NULL
+
+head(dat)
+```
+### install.packages("partykit")  if haven't done so
+
+### Make Tree
+```{r}
+t1 <- ctree(Fledged ~ ., data = dat) # Note the shortcut for specifying model structure
+#Alternatively. Identifies potentially significant predicators.  Only sideb. This means that it is not necessary to run separate analyses on other predictors.. so can avoid bonferroni correction...   Doesn't matter as very significant and likely to remain significant after bonferroni.
+
+
+t1 # Calls the model output to the console
+plot(t1, gp = gpar(fontsize = 9)) # Plot the output, with slightly smaller font so that you can see the outputs
+```
+###Upload data
+```{r}
+Fledge.basic<- read_csv("/Users/fionahoegh-guldberg/Desktop/GlossyR/proportion_abr2020_1.csv",trim_ws=TRUE)
+head(Fledge.basic)
+str(Fledge.basic)
+summary(Fledge.basic)
+
+meansdminmax<-Fledge.basic%>%
+  summarize_at(vars(weeksold), funs(mean,sd,min,max), na.rm=TRUE)
+meansdminmax
+
+```
+###Changing to factor
+###Sideb cube transformed because predictor is left skewed
+```{r}
+Fledge.basic$Fledged <- as.factor(Fledge.basic$Fledged)
+str(Fledge.basic)
+
+```
+###model
+```{r}
+Fledge.glmerL1 <- glmer(Fledged~Sideb3*weeksold+(1|NestID), data=Fledge.basic, family='binomial') #Laplacian approximation
+
+summary(Fledge.glmerL1) 
+
+
+Anova(Fledge.glmerL1, type=3)
+
+
+hist(Fledge.basic$Sideb3)
+
+```
+###model
+```{r}
+Fledge.glmerL2 <- glmer(Fledged~Biphon*weeksold+(1|NestID), data=Fledge.basic, family='binomial') #Laplacian approximation
+
+summary(Fledge.glmerL2) 
+
+Anova(Fledge.glmerL2, type=3)
+
+```
+
+```{r}
+Fledge.glmerL3 <- glmer(Fledged~Bifurc*weeksold+(1|NestID), data=Fledge.basic, family='binomial') #Laplacian approximation
+
+summary(Fledge.glmerL3) 
+
+Anova(Fledge.glmerL3, type=3)
+
+```
+
+```{r}
+Fledge.glmerL4 <- glmer(Fledged~Chaos*weeksold+(1|NestID), data=Fledge.basic, family='binomial') #Laplacian approximation
+
+summary(Fledge.glmerL4) 
+
+Anova(Fledge.glmerL4, type=3)
+
+```
+
+```{r}
+Fledge.glmerL4 <- glmer(Fledged~Jumps*weeksold+(1|NestID), data=Fledge.basic, family='binomial') #Laplacian approximation
+
+summary(Fledge.glmerL4) 
+
+Anova(Fledge.glmerL4, type=3)
+
+```
+
+
+
+###R2 analogue
+
+```{r}
+  
+
+r.squaredGLMM(Fledge.glmerL1) # fixed effects account for 17.1% of variance, random effects 82.9%.
+```
+
+### Model diagnostics
+
+```{r}
+dat.sim<- simulateResiduals(Fledge.glmerL1)
+plot(dat.sim)
+#want p values to be greater than 0.05)
+
+```
+#Survival plot
+### int.with =0.45 plots SE, ie 0.95 =1.96SE, so SE=0.95/1.96
+```{r}
+
+plot(allEffects(Fledge.glmerL1))
+
+fig1A<-interact_plot(Fledge.glmerL1, pred = Sideb3, modx = weeksold, modx.values = c(4,5,6,7), x.label = "Sidebands^3", y.label="Probability of fledging", interval = TRUE, int.width =0.44)
+fig1A
+fig1A2 <- fig1A+theme_classic(base_size = 20)
+fig1A2
+ggsave(filename ="F_fledged2.png", plot=fig1A2)
+
+```
+
+#no NLP data
+```{r}
+Fledge<- read_csv("/Users/fionahoegh-guldberg/Desktop/GlossyR/noNLP.csv",trim_ws=TRUE)
+head(Fledge)
+str(Fledge)
+summary(Fledge)
+```
+###Changing to factor
+###no NLP is zero inflated (NLP present in almost all calls)
+```{r}
+Fledge$Fledged <- as.factor(Fledge$Fledged)
+str(Fledge)
+hist(Fledge$noNLP)
+hist(Fledge$NLP)
+
+meansdminmax<-Fledge%>%
+  summarize_at(vars(NLP), funs(mean,sd,min,max), na.rm=TRUE)
+meansdminmax
+```
+###comparing AIC model outputs for collective NLP glmers (has random effects so cannot apply stepAIC)
+```{r}
+Fledge.glmerL2 <- glmer(Fledged~NLP*weeksold+(1|NestID), data=Fledge, family='binomial') #Laplacian approximation
+Fledge.glmerL3 <- glmer(Fledged~NLP+weeksold+(1|NestID), data=Fledge, family='binomial') #Laplacian approximation
+Fledge.glmerL4 <- glmer(Fledged~NLP+(1|NestID), data=Fledge, family='binomial') #Laplacian approximation
+Fledge.glmerL5 <- glmer(Fledged~(1|NestID), data=Fledge, family='binomial') #Laplacian approximation
+Fledge.glmerL6 <- glmer(Fledged~weeksold+(1|NestID), data=Fledge, family='binomial') #Laplacian approximation
+AICc(Fledge.glmerL2,Fledge.glmerL3,Fledge.glmerL4,Fledge.glmerL5,Fledge.glmerL6)
+
+summary(Fledge.glmerL5) # best fit model drops all fixed effects
+```
+
+```{r}
+r.squaredGLMM(Fledge.glmerL5)
+```
+
+### Model diagnostics
+
+```{r}
+dat.sim<- simulateResiduals(Fledge.glmerL5)
+plot(dat.sim)
+#want p values to be greater than 0.05)
+```
+
